@@ -33,8 +33,19 @@ def detect_serial_port() -> str:
     sys.exit(1)
 
 
-def find_nvs_gen() -> str:
-    """Locate nvs_partition_gen.py from the PlatformIO ESP-IDF package."""
+def nvs_gen_command() -> list[str]:
+    """Return the command prefix for invoking nvs_partition_gen.
+
+    Prefers the bundled `esp-idf-nvs-partition-gen` pip package (declared as a
+    uv dependency in tools/dev), falling back to the PlatformIO ESP-IDF copy.
+    """
+    try:
+        import esp_idf_nvs_partition_gen  # noqa: F401
+
+        return [sys.executable, "-m", "esp_idf_nvs_partition_gen"]
+    except ImportError:
+        pass
+
     pio = Path.home() / ".platformio"
     direct = (
         pio
@@ -46,13 +57,13 @@ def find_nvs_gen() -> str:
         / "nvs_partition_gen.py"
     )
     if direct.exists():
-        return str(direct)
+        return [sys.executable, str(direct)]
 
     for path in pio.glob("**/nvs_partition_gen.py"):
-        return str(path)
+        return [sys.executable, str(path)]
 
-    print("Error: Could not find nvs_partition_gen.py.")
-    print("  Make sure PlatformIO + ESP-IDF framework are installed.")
+    print("Error: Could not find nvs_partition_gen.")
+    print("  Run `uv sync` in the repo root, or install PlatformIO ESP-IDF framework.")
     sys.exit(1)
 
 
@@ -109,14 +120,9 @@ def generate_nvs(ssid: str, pw: str, app_config: dict[str, str] | None = None) -
     NVS_CSV.write_text(buf.getvalue())
     print(f"  ✓ Wrote {NVS_CSV.relative_to(REPO_ROOT)}")
 
-    nvs_gen = find_nvs_gen()
-
     result = subprocess.run(
         [
-            "uv",
-            "run",
-            "python",
-            nvs_gen,
+            *nvs_gen_command(),
             "generate",
             str(NVS_CSV),
             str(NVS_BIN),
